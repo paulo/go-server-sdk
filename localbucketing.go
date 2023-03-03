@@ -480,28 +480,35 @@ func (d *DevCycleLocalBucketing) SetClientCustomData(customData string) error {
 	return err
 }
 
+func encodeUTF16(s string) []byte {
+	runes := utf16.Encode([]rune(s))
+	b := make([]byte, len(runes)*2)
+	for i, r := range runes {
+		b[i*2] = byte(r)
+	}
+	return b
+}
+
 // This has a horrible hack because of WTF-16 - We're double-allocating because utf8->utf16 doesn't zero-pad
 // after the first character byte, so we do that manually.
 func (d *DevCycleLocalBucketing) newAssemblyScriptString(param string) (int32, error) {
 	const objectIdString int32 = 1
-	encoded := utf16.Encode([]rune(param))
+	encoded := encodeUTF16(param)
 
 	if d.__newFunc == nil {
 		d.__newFunc = d.wasmInstance.GetExport(d.wasmStore, "__new").Func()
 	}
 
 	// malloc
-	ptr, err := d.__newFunc.Call(d.wasmStore, int32(len(encoded)*2), objectIdString)
+	ptr, err := d.__newFunc.Call(d.wasmStore, int32(len(encoded)), objectIdString)
 	if err != nil {
 		return -1, err
 	}
 	addr := ptr.(int32)
 
 	data := d.wasmMemory.UnsafeData(d.wasmStore)
-	var i int32 = 0
-	for i = 0; i < int32(len(encoded)); i++ {
-		data[addr+(i*2)] = byte(encoded[i])
-	}
+	copy(data[addr:], encoded[:])
+
 	dataAddress := ptr.(int32)
 	if dataAddress == 0 {
 		return -1, errorf("Failed to allocate memory for string")
