@@ -3,9 +3,12 @@ package devcycle
 import (
 	_ "embed"
 	"fmt"
+	"os"
 	"testing"
+	"time"
 
 	"github.com/jarcoal/httpmock"
+	"github.com/stretchr/testify/require"
 )
 
 func TestDevCycleLocalBucketing_Initialize(t *testing.T) {
@@ -155,6 +158,48 @@ func BenchmarkDevCycleLocalBucketing_GenerateBucketedConfigForUser(b *testing.B)
 			`{"user_id": "j_test", "platform": "golang-testing", "sdkType": "server", "platformVersion": "testing", "deviceModel": "testing", "sdkVersion":"testing"}`)
 		if err != nil {
 			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkNewDevCycle(b *testing.B) {
+	dcKey := os.Getenv("DEVCYCLE_KEY")
+	if dcKey == "" {
+		b.Errorf("DEVCYCLE_KEY not set")
+		return
+	}
+
+	onInitializedChannel := make(chan bool) // optional
+
+	devOpts := &DVCOptions{
+		EnableEdgeDB:                 false,
+		EnableCloudBucketing:         false,
+		RequestTimeout:               time.Second * 2,
+		DisableAutomaticEventLogging: false,
+		DisableCustomEventLogging:    true,
+		EventFlushIntervalMS:         time.Second * 30,
+		ConfigPollingIntervalMS:      time.Second * 10,
+		FlushEventQueueSize:          0,
+		MaxEventQueueSize:            0,
+		OnInitializedChannel:         onInitializedChannel,
+		Logger:                       &DiscardLogger{},
+	}
+
+	client, err := NewDVCClient(dcKey, devOpts)
+	require.NoError(b, err)
+
+	<-onInitializedChannel
+
+	time.Sleep(time.Second)
+
+	user := DVCUser{UserId: "dontcare"}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_, err = client.Variable(user, "basic-boolean", false)
+		if err != nil {
+			b.Errorf("Failed to retrieve variable: %v", err)
 		}
 	}
 }

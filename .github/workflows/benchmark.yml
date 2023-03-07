@@ -1,0 +1,25 @@
+name: Run benchmark
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+
+jobs:
+  benchmark:
+    name: Devcycle benchmark
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Go
+      uses: actions/setup-go@v3
+      with:
+        go-version: 1.19
+
+    - name: Benchmark
+      run: go test -bench=BenchmarkNewDevCycle -benchtime=5s -benchmem -run='^#' ./...
+      env:
+        DEVCYCLE_KEY: ${{ secrets.DEVCYCLE_KEY }}
